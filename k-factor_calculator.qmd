@@ -1,0 +1,101 @@
+---
+title: "K-Factor Calculator"
+subtitle: "AAVSO solar observers"
+date: today
+format:
+  html:
+    embed-resources: true
+    toc: true
+execute:
+  echo: false
+  warning: false
+params:
+  start_date: "2024-01-01"
+  end_date: "2024-06-30"
+  min_obs: 100
+  zero_handling: "substitute"   # "substitute" (as in the Perl script) or "skip"
+  output_file: "new_k-factors.txt"
+---
+
+```{r}
+#| label: setup
+library(dplyr)
+library(ggplot2)
+library(knitr)
+source("R/k_factor.R")
+
+start_jd <- date_to_jd(params$start_date)
+end_jd <- date_to_jd(params$end_date)
+```
+
+```{r}
+#| label: load-data
+con <- connect_solar_db()
+
+last_jd <- last_ra_jd(con)
+if (end_jd > last_jd) {
+  stop("End date must be no later than ", jd_to_date(last_jd),
+       " (the last date with an Ra value).", call. = FALSE)
+}
+if (end_jd - start_jd < 100) {
+  stop("End date must be at least 100 days after the start date.", call. = FALSE)
+}
+
+observations <- fetch_observations(con, start_jd, end_jd)
+ra <- fetch_ra(con, start_jd, end_jd)
+old_k <- fetch_old_k(con)
+dbDisconnect(con)
+```
+
+```{r}
+#| label: compute
+k_factors <- compute_k_factors(observations, ra,
+                               min_obs = params$min_obs,
+                               zero_handling = params$zero_handling) |>
+  left_join(old_k, by = "obs") |>
+  mutate(change = k - old_k)
+
+write_k_factors(k_factors, params$output_file)
+```
+
+## Summary
+
+Period **`r params$start_date`** to **`r params$end_date`**
+(JD `r start_jd` to `r end_jd`).
+**`r nrow(k_factors)`** observers had at least `r params$min_obs` observations.
+Zero or missing values were handled with the **`r params$zero_handling`** method.
+Results were written to `` `r params$output_file` ``.
+
+Each k-factor is the geometric mean of Ra / W over the observer's
+observations:
+
+$$
+k = 10^{\frac{1}{N}\sum_{i=1}^{N} \left(\log_{10} Ra_i - \log_{10} W_i\right)}
+$$
+
+## K-factors
+
+```{r}
+#| label: tbl-k-factors
+k_factors |>
+  select(Observer = obs, Reported = n_reported, Used = n_used,
+         `Zero/missing` = n_zero_or_missing,
+         `New k` = k, `Old k` = old_k, Change = change) |>
+  kable(digits = 3)
+```
+
+## New vs. old k-factors
+
+```{r}
+#| label: fig-new-vs-old
+#| fig-cap: "Points above the dashed line got a larger k-factor than before."
+k_factors |>
+  filter(!is.na(old_k)) |>
+  ggplot(aes(old_k, k)) +
+  geom_abline(linetype = "dashed", colour = "grey50") +
+  geom_point(colour = "#12355b", size = 2) +
+  geom_text(aes(label = obs), vjust = -0.8, size = 3) +
+  coord_equal() +
+  labs(x = "Old k-factor", y = "New k-factor") +
+  theme_minimal()
+```
