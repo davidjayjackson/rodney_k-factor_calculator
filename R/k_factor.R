@@ -14,12 +14,14 @@ jd_to_date <- function(jd) {
   as.Date(floor(jd + 0.5) - 2440588)
 }
 
-connect_solar_db <- function(host = "db.aavso.org", dbname = "solar") {
-  user <- Sys.getenv("SOLAR_DB_USER")
-  password <- Sys.getenv("SOLAR_DB_PASSWORD")
-  if (user == "" || password == "") {
-    stop("Set SOLAR_DB_USER and SOLAR_DB_PASSWORD (e.g. in ~/.Renviron).", call. = FALSE)
-  }
+# Database connection settings.
+SOLAR_DB_HOST <- "db.aavso.org"
+SOLAR_DB_NAME <- "solar"
+SOLAR_DB_USER <- "your_username"
+SOLAR_DB_PASSWORD <- "your_password"
+
+connect_solar_db <- function(host = SOLAR_DB_HOST, dbname = SOLAR_DB_NAME,
+                             user = SOLAR_DB_USER, password = SOLAR_DB_PASSWORD) {
   dbConnect(RMariaDB::MariaDB(), host = host, dbname = dbname,
             user = user, password = password)
 }
